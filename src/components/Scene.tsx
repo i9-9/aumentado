@@ -4,6 +4,11 @@ import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 
+const PULSE_CYCLE = 3.5;
+const PULSE_MAX_RADIUS = 13;
+
+const _mouse = new THREE.Vector3();
+
 function useParticleCounts() {
   const [counts, setCounts] = useState({ fine: 5000, glow: 400 });
 
@@ -22,6 +27,18 @@ function useParticleCounts() {
   return counts;
 }
 
+function getMouseWorld(
+  camera: THREE.Camera,
+  pointer: THREE.Vector2,
+  target: THREE.Vector3,
+) {
+  const raycaster = new THREE.Raycaster();
+  raycaster.setFromCamera(pointer, camera);
+  const plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
+  raycaster.ray.intersectPlane(plane, target);
+  return target;
+}
+
 function createCloud(count: number, spread: number) {
   const positions = new Float32Array(count * 3);
   for (let i = 0; i < count; i++) {
@@ -35,36 +52,106 @@ function createCloud(count: number, spread: number) {
   return positions;
 }
 
+function applyPulse(
+  bx: number,
+  by: number,
+  bz: number,
+  elapsed: number,
+  out: THREE.Vector3,
+) {
+  const dist = Math.sqrt(bx * bx + by * by + bz * bz);
+  const waveRadius = ((elapsed % PULSE_CYCLE) / PULSE_CYCLE) * PULSE_MAX_RADIUS;
+  const band = 1.6;
+  const diff = dist - waveRadius;
+
+  out.set(bx, by, bz);
+  if (Math.abs(diff) < band && dist > 0.001) {
+    const push = (1 - Math.abs(diff) / band) * 0.42;
+    out.x += (bx / dist) * push;
+    out.y += (by / dist) * push;
+    out.z += (bz / dist) * push;
+  }
+}
+
 function ParticleLayer({
   count,
   spread,
   size,
   opacity,
+  mouseRepulsion = false,
+  pulseWave = false,
 }: {
   count: number;
   spread: number;
   size: number;
   opacity: number;
+  mouseRepulsion?: boolean;
+  pulseWave?: boolean;
 }) {
   const ref = useRef<THREE.Points>(null);
-  const positions = useMemo(
-    () => createCloud(count, spread),
-    [count, spread],
-  );
+  const base = useMemo(() => createCloud(count, spread), [count, spread]);
+  const current = useMemo(() => new Float32Array(base), [base]);
+  const target = useMemo(() => new THREE.Vector3(), []);
 
   useFrame((state, delta) => {
     if (!ref.current) return;
+
     const t = state.clock.elapsedTime;
+    const attr = ref.current.geometry.attributes
+      .position as THREE.BufferAttribute;
+    const arr = attr.array as Float32Array;
+
     ref.current.rotation.y += delta * 0.025;
     ref.current.rotation.x = Math.sin(t * 0.15) * 0.08;
+
+    const { camera, pointer } = state;
+    if (mouseRepulsion) {
+      getMouseWorld(camera, pointer, _mouse);
+    }
+
+    const smooth = 1 - Math.exp(-delta * 7);
+
+    for (let i = 0; i < count; i++) {
+      const bx = base[i * 3];
+      const by = base[i * 3 + 1];
+      const bz = base[i * 3 + 2];
+
+      if (pulseWave) {
+        applyPulse(bx, by, bz, t, target);
+      } else {
+        target.set(bx, by, bz);
+      }
+
+      if (mouseRepulsion) {
+        const dx = target.x - _mouse.x;
+        const dy = target.y - _mouse.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        const radius = 2.4;
+        if (dist < radius && dist > 0.001) {
+          const force = (1 - dist / radius) * 1.8;
+          target.x += (dx / dist) * force;
+          target.y += (dy / dist) * force;
+        }
+      }
+
+      arr[i * 3] += (target.x - arr[i * 3]) * smooth;
+      arr[i * 3 + 1] += (target.y - arr[i * 3 + 1]) * smooth;
+      arr[i * 3 + 2] += (target.z - arr[i * 3 + 2]) * smooth;
+    }
+
+    attr.needsUpdate = true;
   });
+
+  useEffect(() => {
+    current.set(base);
+  }, [base, current]);
 
   return (
     <points ref={ref}>
       <bufferGeometry>
         <bufferAttribute
           attach="attributes-position"
-          args={[positions, 3]}
+          args={[current, 3]}
           count={count}
         />
       </bufferGeometry>
@@ -76,6 +163,7 @@ function ParticleLayer({
         opacity={opacity}
         depthWrite={false}
         blending={THREE.AdditiveBlending}
+        toneMapped={false}
       />
     </points>
   );
@@ -115,8 +203,21 @@ function Experience() {
     <>
       <color attach="background" args={["#000000"]} />
       <fog attach="fog" args={["#000000", 4, 20]} />
-      <ParticleLayer count={fine} spread={9} size={0.045} opacity={0.55} />
-      <ParticleLayer count={glow} spread={7} size={0.14} opacity={0.22} />
+      <ParticleLayer
+        count={fine}
+        spread={9}
+        size={0.045}
+        opacity={0.55}
+        pulseWave
+      />
+      <ParticleLayer
+        count={glow}
+        spread={7}
+        size={0.14}
+        opacity={0.28}
+        mouseRepulsion
+        pulseWave
+      />
       <CameraRig />
     </>
   );
@@ -130,11 +231,16 @@ export function Scene({ className = "" }: SceneProps) {
   return (
     <div className={`absolute inset-0 ${className}`}>
       <Canvas
+        key="scene-home"
         className="h-full w-full touch-none"
         camera={{ position: [0, 0, 7.5], fov: 52, near: 0.1, far: 35 }}
         dpr={[1, 1.5]}
         resize={{ scroll: false, debounce: { scroll: 0, resize: 0 } }}
-        gl={{ antialias: true, alpha: false, powerPreference: "high-performance" }}
+        gl={{
+          antialias: true,
+          alpha: false,
+          powerPreference: "high-performance",
+        }}
       >
         <Experience />
       </Canvas>
