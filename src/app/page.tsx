@@ -1,4 +1,3 @@
-import { Container } from "@/components/Container";
 import { Navbar } from "@/components/Navbar";
 import { Scene } from "@/components/Scene";
 
@@ -6,37 +5,31 @@ export default function Home() {
   return (
     <>
       <Navbar />
-      <main className="min-h-screen pt-12">
-        <section className="relative min-h-[calc(100dvh-3rem)] overflow-hidden">
+      <main className="bg-black text-white">
+        <section className="relative h-[100dvh] overflow-hidden">
           <Scene />
 
-          <Container className="relative z-10 flex min-h-[calc(100dvh-3rem)] items-end pb-16 sm:pb-20 lg:items-center lg:pb-24">
-            <div className="pointer-events-none max-w-xl lg:max-w-md">
-              <p className="type-label mb-6 text-[var(--color-muted)]">
-                Estudio
-              </p>
-              <h1 className="type-display mb-8">Aumentado</h1>
-              <p className="type-body lg:text-[1.0625rem]">
-                Diseño, tecnología y experiencias digitales.
-              </p>
-            </div>
-          </Container>
+          <div className="pointer-events-none relative z-10 flex h-full flex-col justify-end">
+            <h1 className="type-hero px-6 pb-10 sm:px-10 sm:pb-12 lg:px-12 lg:pb-14">
+              Aumentado
+            </h1>
+            <p className="type-hint absolute right-6 bottom-8 sm:right-10 lg:right-12">
+              Scroll para explorar
+            </p>
+          </div>
         </section>
 
-        <section id="contacto" className="relative z-10 border-t rule bg-white">
-          <Container className="py-12 lg:py-16">
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-12 sm:gap-8">
-              <p className="type-label text-[var(--color-muted)] sm:col-span-3">
-                Contacto
-              </p>
-              <a
-                href="mailto:hola@aumentado.com"
-                className="pointer-events-auto text-base text-black underline-offset-4 hover:underline sm:col-span-9"
-              >
-                hola@aumentado.com
-              </a>
-            </div>
-          </Container>
+        <section
+          id="contacto"
+          className="relative z-10 border-t border-white/10 px-6 py-20 sm:px-10 lg:px-12"
+        >
+          <p className="type-hint mb-4 text-white/40">Contacto</p>
+          <a
+            href="mailto:hola@aumentado.com"
+            className="text-2xl font-bold tracking-[-0.02em] text-white transition-opacity hover:opacity-60 sm:text-3xl"
+          >
+            hola@aumentado.com
+          </a>
         </section>
       </main>
     </>

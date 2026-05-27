@@ -3,7 +3,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Aumentado",
-  description: "Aumentado",
+  description: "Estudio creativo — diseño, tecnología y experiencias digitales.",
 };
 
 export default function RootLayout({
@@ -12,7 +12,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="es">
+    <html lang="es" className="bg-black">
       <body className="antialiased">{children}</body>
     </html>
   );

@@ -4,14 +4,14 @@ import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 
-function useParticleCount() {
-  const [count, setCount] = useState(5000);
+function useParticleCounts() {
+  const [counts, setCounts] = useState({ fine: 5000, glow: 400 });
 
   useEffect(() => {
     const update = () => {
-      if (window.innerWidth < 640) setCount(2000);
-      else if (window.innerWidth < 1024) setCount(4500);
-      else setCount(9000);
+      if (window.innerWidth < 640) setCounts({ fine: 2500, glow: 200 });
+      else if (window.innerWidth < 1024) setCounts({ fine: 7000, glow: 350 });
+      else setCounts({ fine: 14000, glow: 600 });
     };
 
     update();
@@ -19,29 +19,44 @@ function useParticleCount() {
     return () => window.removeEventListener("resize", update);
   }, []);
 
-  return count;
+  return counts;
 }
 
-function Particles({ count }: { count: number }) {
+function createCloud(count: number, spread: number) {
+  const positions = new Float32Array(count * 3);
+  for (let i = 0; i < count; i++) {
+    const radius = Math.pow(Math.random(), 0.38) * spread;
+    const theta = Math.random() * Math.PI * 2;
+    const phi = Math.acos(2 * Math.random() - 1);
+    positions[i * 3] = radius * Math.sin(phi) * Math.cos(theta);
+    positions[i * 3 + 1] = radius * Math.sin(phi) * Math.sin(theta);
+    positions[i * 3 + 2] = radius * Math.cos(phi);
+  }
+  return positions;
+}
+
+function ParticleLayer({
+  count,
+  spread,
+  size,
+  opacity,
+}: {
+  count: number;
+  spread: number;
+  size: number;
+  opacity: number;
+}) {
   const ref = useRef<THREE.Points>(null);
+  const positions = useMemo(
+    () => createCloud(count, spread),
+    [count, spread],
+  );
 
-  const positions = useMemo(() => {
-    const pos = new Float32Array(count * 3);
-    for (let i = 0; i < count; i++) {
-      const radius = Math.pow(Math.random(), 0.55) * 14;
-      const theta = Math.random() * Math.PI * 2;
-      const phi = Math.acos(2 * Math.random() - 1);
-      pos[i * 3] = radius * Math.sin(phi) * Math.cos(theta);
-      pos[i * 3 + 1] = radius * Math.sin(phi) * Math.sin(theta);
-      pos[i * 3 + 2] = radius * Math.cos(phi);
-    }
-    return pos;
-  }, [count]);
-
-  useFrame((_, delta) => {
+  useFrame((state, delta) => {
     if (!ref.current) return;
-    ref.current.rotation.y += delta * 0.04;
-    ref.current.rotation.x += delta * 0.015;
+    const t = state.clock.elapsedTime;
+    ref.current.rotation.y += delta * 0.025;
+    ref.current.rotation.x = Math.sin(t * 0.15) * 0.08;
   });
 
   return (
@@ -54,12 +69,13 @@ function Particles({ count }: { count: number }) {
         />
       </bufferGeometry>
       <pointsMaterial
-        color="#000000"
-        size={0.035}
+        color="#ffffff"
+        size={size}
         sizeAttenuation
         transparent
-        opacity={0.45}
+        opacity={opacity}
         depthWrite={false}
+        blending={THREE.AdditiveBlending}
       />
     </points>
   );
@@ -74,18 +90,18 @@ function CameraRig() {
     const t = state.clock.elapsedTime;
     parallax.current.x = THREE.MathUtils.lerp(
       parallax.current.x,
-      pointer.x * 1.2,
-      delta * 1.8,
+      pointer.x * 0.9,
+      delta * 1.5,
     );
     parallax.current.y = THREE.MathUtils.lerp(
       parallax.current.y,
-      pointer.y * 0.7,
-      delta * 1.8,
+      pointer.y * 0.55,
+      delta * 1.5,
     );
 
     camera.position.x = parallax.current.x;
     camera.position.y = parallax.current.y;
-    camera.position.z = 9 + Math.sin(t * 0.12) * 0.6;
+    camera.position.z = 7.5 + Math.sin(t * 0.1) * 0.5;
     camera.lookAt(lookAt);
   });
 
@@ -93,13 +109,14 @@ function CameraRig() {
 }
 
 function Experience() {
-  const count = useParticleCount();
+  const { fine, glow } = useParticleCounts();
 
   return (
     <>
-      <color attach="background" args={["#ffffff"]} />
-      <fog attach="fog" args={["#ffffff", 6, 22]} />
-      <Particles count={count} />
+      <color attach="background" args={["#000000"]} />
+      <fog attach="fog" args={["#000000", 4, 20]} />
+      <ParticleLayer count={fine} spread={9} size={0.045} opacity={0.55} />
+      <ParticleLayer count={glow} spread={7} size={0.14} opacity={0.22} />
       <CameraRig />
     </>
   );
@@ -114,13 +131,17 @@ export function Scene({ className = "" }: SceneProps) {
     <div className={`absolute inset-0 ${className}`}>
       <Canvas
         className="h-full w-full touch-none"
-        camera={{ position: [0, 0, 9], fov: 50, near: 0.1, far: 40 }}
+        camera={{ position: [0, 0, 7.5], fov: 52, near: 0.1, far: 35 }}
         dpr={[1, 1.5]}
         resize={{ scroll: false, debounce: { scroll: 0, resize: 0 } }}
-        gl={{ antialias: true, alpha: false }}
+        gl={{ antialias: true, alpha: false, powerPreference: "high-performance" }}
       >
         <Experience />
       </Canvas>
+      <div
+        className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_center,transparent_0%,rgba(0,0,0,0.45)_65%,rgba(0,0,0,0.85)_100%)]"
+        aria-hidden
+      />
     </div>
   );
 }

@@ -3,15 +3,11 @@
 @theme {
   --breakpoint-3xl: 120rem;
   --font-sans: "Helvetica Neue", Helvetica, Arial, sans-serif;
-  --color-black: #000000;
-  --color-white: #ffffff;
-  --color-muted: #666666;
 }
 
 :root {
-  --background: var(--color-white);
-  --foreground: var(--color-black);
-  --rule: rgba(0, 0, 0, 0.12);
+  --background: #000000;
+  --foreground: #ffffff;
 }
 
 html {
@@ -21,38 +17,25 @@ html {
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: var(--font-sans);
+  font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
   font-size: 1rem;
   font-weight: 400;
   line-height: 1.5;
-  letter-spacing: 0;
 }
 
 @layer utilities {
-  .type-label {
+  .type-hero {
+    font-size: clamp(3.5rem, 16vw, 11rem);
+    font-weight: 700;
+    letter-spacing: -0.03em;
+    line-height: 0.88;
+  }
+
+  .type-hint {
     font-size: 0.6875rem;
     font-weight: 400;
-    letter-spacing: 0.14em;
+    letter-spacing: 0.12em;
     line-height: 1;
     text-transform: uppercase;
-  }
-
-  .type-display {
-    font-size: clamp(2.25rem, 4vw, 3.75rem);
-    font-weight: 700;
-    letter-spacing: -0.02em;
-    line-height: 1;
-  }
-
-  .type-body {
-    font-size: 1rem;
-    font-weight: 400;
-    line-height: 1.5;
-    color: var(--color-muted);
-    max-width: 36ch;
-  }
-
-  .rule {
-    border-color: var(--rule);
   }
 }
