@@ -24,7 +24,10 @@ function SpeakerIcon({ muted }: { muted: boolean }) {
 export function Navbar() {
   const pathname = usePathname();
   const isV2 = pathname === "/v2";
-  const contactHref = isV2 ? "/v2#contacto" : "/#contacto";
+  const isV3 = pathname === "/v3";
+  const activeVersion = isV2 ? "/v2" : isV3 ? "/v3" : "/";
+  const contactHref = `${activeVersion === "/" ? "" : activeVersion}#contacto`;
+
   const isMuted = useSyncExternalStore(
     audioStore.subscribe,
     audioStore.getMuted,
@@ -35,7 +38,7 @@ export function Navbar() {
     <header className="fixed top-0 right-0 left-0 z-20">
       <nav className="flex items-center justify-between px-6 py-6 sm:px-10 lg:px-12">
         <Link
-          href={isV2 ? "/v2" : "/"}
+          href={activeVersion}
           className="text-sm font-bold tracking-[-0.01em] text-white"
         >
           Aumentado
@@ -58,28 +61,22 @@ export function Navbar() {
             role="group"
             aria-label="Versión del sitio"
           >
-            <Link
-              href="/"
-              className={`rounded-full px-3 py-1.5 text-xs font-medium tracking-wide transition-colors ${
-                !isV2
-                  ? "bg-white text-black"
-                  : "text-white/60 hover:text-white"
-              }`}
-              aria-current={!isV2 ? "page" : undefined}
-            >
-              01
-            </Link>
-            <Link
-              href="/v2"
-              className={`rounded-full px-3 py-1.5 text-xs font-medium tracking-wide transition-colors ${
-                isV2
-                  ? "bg-white text-black"
-                  : "text-white/60 hover:text-white"
-              }`}
-              aria-current={isV2 ? "page" : undefined}
-            >
-              02
-            </Link>
+            {(["01", "02", "03"] as const).map((label) => {
+              const href = label === "01" ? "/" : `/${label === "02" ? "v2" : "v3"}`;
+              const active = label === "01" ? (!isV2 && !isV3) : label === "02" ? isV2 : isV3;
+              return (
+                <Link
+                  key={label}
+                  href={href}
+                  className={`rounded-full px-3 py-1.5 text-xs font-medium tracking-wide transition-colors ${
+                    active ? "bg-white text-black" : "text-white/60 hover:text-white"
+                  }`}
+                  aria-current={active ? "page" : undefined}
+                >
+                  {label}
+                </Link>
+              );
+            })}
           </div>
 
           <Link
