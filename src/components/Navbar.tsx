@@ -25,7 +25,8 @@ export function Navbar() {
   const pathname = usePathname();
   const isV2 = pathname === "/v2";
   const isV3 = pathname === "/v3";
-  const activeVersion = isV2 ? "/v2" : isV3 ? "/v3" : "/";
+  const isV4 = pathname === "/v4";
+  const activeVersion = isV2 ? "/v2" : isV3 ? "/v3" : isV4 ? "/v4" : "/";
   const contactHref = `${activeVersion === "/" ? "" : activeVersion}#contacto`;
 
   const isMuted = useSyncExternalStore(
@@ -61,9 +62,9 @@ export function Navbar() {
             role="group"
             aria-label="Versión del sitio"
           >
-            {(["01", "02", "03"] as const).map((label) => {
-              const href = label === "01" ? "/" : `/${label === "02" ? "v2" : "v3"}`;
-              const active = label === "01" ? (!isV2 && !isV3) : label === "02" ? isV2 : isV3;
+            {(["01", "02", "03", "04"] as const).map((label) => {
+              const href = label === "01" ? "/" : `/${label === "02" ? "v2" : label === "03" ? "v3" : "v4"}`;
+              const active = label === "01" ? (!isV2 && !isV3 && !isV4) : label === "02" ? isV2 : label === "03" ? isV3 : isV4;
               return (
                 <Link
                   key={label}
