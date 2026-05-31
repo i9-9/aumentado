@@ -39,7 +39,7 @@ interface Slab {
   matIdx:    0 | 1 | 2;
 }
 
-function buildSlabs(perAxis = 40): Slab[] {
+function buildSlabs(perAxis = 90): Slab[] {
   const slabs: Slab[] = [];
 
   for (let axis = 0; axis < 3; axis++) {
@@ -129,29 +129,57 @@ function ConPlanes() {
   const meshRefs = useRef<(THREE.Mesh | null)[]>([]);
   const slabs    = useMemo(() => buildSlabs(), []);
 
+  // Minimal env map — simulates Infini-D "reflectivity": grey planes picking
+  // up the cyan of nearby teal planes (inter-object reflection)
+  const envMap = useMemo(() => {
+    const size = 4;
+    const data = new Uint8Array(size * size * 4 * 6);
+    // Each face: very dark with a faint teal tint
+    for (let i = 0; i < data.length; i += 4) {
+      data[i]     = 8;   // R
+      data[i + 1] = 22;  // G — teal bias
+      data[i + 2] = 28;  // B
+      data[i + 3] = 255;
+    }
+    const tex = new THREE.DataArrayTexture(data, size, size, 6);
+    tex.format  = THREE.RGBAFormat;
+    tex.mapping = THREE.CubeReflectionMapping;
+    tex.needsUpdate = true;
+    return tex;
+  }, []);
+
   const materials = useMemo(() => [
-    // 0: Grey — primary, near-white cold
+    // 0: Grey — primary. glow≈0.02, reflectivity≈0.15
     new THREE.MeshPhongMaterial({
-      color:       new THREE.Color("#bec2c6"),
-      shininess:   180,
-      specular:    new THREE.Color("#8ab0cc"),
-      flatShading: false,
+      color:            new THREE.Color("#bec2c6"),
+      emissive:         new THREE.Color("#03060a"), // Infini-D "glow" param
+      shininess:        180,
+      specular:         new THREE.Color("#8ab0cc"),
+      envMap,
+      reflectivity:     0.15,                       // picks up teal from nearby slabs
+      combine:          THREE.MixOperation,
+      flatShading:      false,
     }),
-    // 1: Teal — the cyan vein visible edge-on
+    // 1: Teal — glow≈0.04, reflectivity≈0.20
     new THREE.MeshPhongMaterial({
-      color:       new THREE.Color("#3d7878"),
-      shininess:   160,
-      specular:    new THREE.Color("#70c8c8"),
-      flatShading: false,
+      color:            new THREE.Color("#3d7878"),
+      emissive:         new THREE.Color("#010e0e"),
+      shininess:        160,
+      specular:         new THREE.Color("#70c8c8"),
+      envMap,
+      reflectivity:     0.20,
+      combine:          THREE.MixOperation,
+      flatShading:      false,
     }),
-    // 2: Dark navy
+    // 2: Dark navy — flat shading for faceted low-poly Infini-D look
     new THREE.MeshPhongMaterial({
-      color:       new THREE.Color("#1e3250"),
-      shininess:   120,
-      specular:    new THREE.Color("#4070b0"),
-      flatShading: false,
+      color:            new THREE.Color("#1e3250"),
+      emissive:         new THREE.Color("#000508"),
+      shininess:        120,
+      specular:         new THREE.Color("#4070b0"),
+      flatShading:      true,
     }),
-  ], []);
+  ], [envMap]);
 
   useFrame(({ clock }) => {
     const t = clock.elapsedTime;
@@ -205,13 +233,19 @@ function ConFieldScene() {
     <>
       <color attach="background" args={["#0d0d0d"]} />
 
+      {/* Infini-D atmosphere: very subtle exponential fog for depth */}
+      <fogExp2 attach="fog" args={["#0d0d0d", 0.022]} />
+
       <ambientLight intensity={0.02} color="#ffffff" />
 
-      {/* Key light */}
+      {/* Key light — main directional, like Infini-D studio default */}
       <directionalLight position={[4, 7, 3]} intensity={5.5} color="#ffffff" />
 
       {/* Blue-cyan fill — pronounced, matches reference */}
       <directionalLight position={[-4, 1, -5]} intensity={0.55} color="#4499cc" />
+
+      {/* Center point — simulates inter-reflection: teal planes "glowing" onto greys */}
+      <pointLight position={[0, 0, 0]} intensity={1.2} color="#1a6060" distance={20} decay={2} />
 
       <AnimatedCamera />
       <ConPlanes />
