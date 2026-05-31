@@ -76,7 +76,7 @@ function buildSlabs(perAxis = 90): Slab[] {
         phase:  i * GOLDEN_ANGLE + (axis * 2 * Math.PI) / 3,
         phase2: h(idx * 17) * Math.PI * 2,
         amplitude: 4.0 + (i % 5) * PHI * 0.6,
-        speed: 0.72 + h(idx * 13) * 0.36,
+        speed: 1.8 + h(idx * 13) * 0.9,
         w, h: hh, thick, tilt,
         matIdx: matIdx as 0 | 1 | 2,
       });
@@ -100,22 +100,22 @@ function AnimatedCamera() {
 
   useFrame(({ clock }) => {
     const t = clock.elapsedTime;
-    const w = 0.22; // base angular frequency — fast enough to feel the turn
+    const w = 0.62; // fast — like the promo video
 
     // Primary Lissajous
-    const px =  13 * Math.sin(t * w);
-    const py =   8 * Math.sin(t * w * PHI);
-    const pz =  13 * Math.cos(t * w / PHI);
+    const px =  22 * Math.sin(t * w);
+    const py =  13 * Math.sin(t * w * PHI);
+    const pz =  22 * Math.cos(t * w / PHI);
 
-    // Secondary layer (smaller, φ² freq) — creates hairpin moments
-    const sx =  5 * Math.sin(t * w * PHI * PHI + 1.1);
-    const sy =  3 * Math.cos(t * w * PHI * PHI / PHI + 2.3);
-    const sz =  5 * Math.cos(t * w * PHI + 0.7);
+    // Secondary layer — creates hairpin acceleration moments
+    const sx =  8 * Math.sin(t * w * PHI * PHI + 1.1);
+    const sy =  5 * Math.cos(t * w * PHI * PHI / PHI + 2.3);
+    const sz =  8 * Math.cos(t * w * PHI + 0.7);
 
     camera.position.set(px + sx, py + sy, pz + sz);
 
-    // Subtle roll — heightens sense of motion during tight turns
-    const roll = Math.sin(t * w * PHI * PHI) * 0.35;
+    // Pronounced roll — heightens sense of speed
+    const roll = Math.sin(t * w * PHI * PHI) * 0.7;
     camera.up.set(Math.sin(roll), Math.cos(roll), 0);
 
     camera.lookAt(0, 0, 0);
@@ -257,7 +257,7 @@ export function HeroV3() {
   return (
     <section className="relative h-[100dvh] overflow-hidden bg-black">
       <Canvas
-        camera={{ fov: 55, position: [10, 3, 10], near: 0.1, far: 200 }}
+        camera={{ fov: 55, position: [10, 3, 10], near: 0.1, far: 350 }}
         gl={{
           antialias:        false,
           toneMapping:      THREE.NoToneMapping,
