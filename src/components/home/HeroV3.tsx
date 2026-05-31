@@ -35,6 +35,7 @@ interface Slab {
   w:         number;
   h:         number;
   thick:     number;
+  skew:      number;   // parallelogram lean — shifts top/bottom edges sideways
   tilt:      [number, number, number];
   matIdx:    0 | 1 | 2;
 }
@@ -69,6 +70,10 @@ function buildSlabs(perAxis = 90): Slab[] {
       // No depth — true planes, edge-on = line
       const thick = 0.003 + h(idx * 53) * 0.008;
 
+      // Parallelogram skew: how far the top/bottom edges are offset sideways
+      // Range: 15–45% of the shorter dimension
+      const skew = (h(idx * 59) * 0.30 + 0.15) * Math.min(w, hh);
+
       slabs.push({
         axis: axis as 0 | 1 | 2,
         u: r * Math.cos(angle),
@@ -77,7 +82,7 @@ function buildSlabs(perAxis = 90): Slab[] {
         phase2: h(idx * 17) * Math.PI * 2,
         amplitude: 4.0 + (i % 5) * PHI * 0.6,
         speed: 1.8 + h(idx * 13) * 0.9,
-        w, h: hh, thick, tilt,
+        w, h: hh, thick, skew, tilt,
         matIdx: matIdx as 0 | 1 | 2,
       });
     }
@@ -86,39 +91,73 @@ function buildSlabs(perAxis = 90): Slab[] {
   return slabs;
 }
 
+// Parallelogram geometry: top & bottom edges offset by `skew`.
+function makeParallelogram(w: number, hh: number, skew: number, axis: 0|1|2): THREE.BufferGeometry {
+  const geo = new THREE.BufferGeometry();
+  const pts: [number, number][] = [
+    [-w/2 - skew, -hh/2],  // 0 bottom-left
+    [ w/2 - skew, -hh/2],  // 1 bottom-right
+    [ w/2 + skew,  hh/2],  // 2 top-right
+    [-w/2 + skew,  hh/2],  // 3 top-left
+  ];
+  const pos = new Float32Array(4 * 3);
+  pts.forEach(([a, b], i) => {
+    if (axis === 0)      { pos[i*3]=0; pos[i*3+1]=a; pos[i*3+2]=b; }
+    else if (axis === 1) { pos[i*3]=a; pos[i*3+1]=0; pos[i*3+2]=b; }
+    else                 { pos[i*3]=a; pos[i*3+1]=b; pos[i*3+2]=0; }
+  });
+  geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+  geo.setIndex([0, 1, 2, 0, 2, 3]);
+  geo.computeVertexNormals();
+  return geo;
+}
+
 /*
- * Camera path — 3D Lissajous with three φ-related frequencies:
- *   X: ω
- *   Y: ω × φ
- *   Z: ω / φ
- * Three irrational multiples → path never repeats, always turning.
- * Secondary term on each axis (amplitude ×1/φ, frequency ×φ²) adds
- * tight hairpin turns when primary and secondary partially cancel.
+ * Camera path — decoupled distance & angle:
+ *   distance  oscillates fast (enters/exits cluster many times)
+ *   angle     drifts slowly  (orbit changes over time)
+ *
+ * When inside (dist < 8): roll intensifies, lookAt wanders → spinning chaos.
+ * When outside: roll settles, lookAt centers → moment of clarity.
  */
 function AnimatedCamera() {
   const { camera } = useThree();
+  const lookTarget = useMemo(() => new THREE.Vector3(), []);
 
   useFrame(({ clock }) => {
     const t = clock.elapsedTime;
-    const w = 0.62; // fast — like the promo video
 
-    // Primary Lissajous
-    const px =  22 * Math.sin(t * w);
-    const py =  13 * Math.sin(t * w * PHI);
-    const pz =  22 * Math.cos(t * w / PHI);
+    // Slow angular drift — orbit changes across the full animation
+    const theta = t * 0.22 + Math.sin(t * 0.22 / PHI) * 0.9;
+    const phi   = 0.45 * Math.sin(t * 0.17 * PHI);
 
-    // Secondary layer — creates hairpin acceleration moments
-    const sx =  8 * Math.sin(t * w * PHI * PHI + 1.1);
-    const sy =  5 * Math.cos(t * w * PHI * PHI / PHI + 2.3);
-    const sz =  8 * Math.cos(t * w * PHI + 0.7);
+    // Fast radial oscillation — enters and exits multiple times
+    // Two φ-related frequencies → irregular cycle lengths
+    const d1 = Math.sin(t * 0.85);
+    const d2 = Math.sin(t * 0.85 * PHI) * 0.45;
+    const distNorm = ((d1 + d2) + 1.45) / 2.9;          // 0 → 1
+    const dist     = 1.2 + 24 * Math.pow(distNorm, 1.3); // 1.2 → 25
 
-    camera.position.set(px + sx, py + sy, pz + sz);
+    camera.position.set(
+      dist * Math.cos(theta) * Math.cos(phi),
+      dist * Math.sin(phi),
+      dist * Math.sin(theta) * Math.cos(phi),
+    );
 
-    // Pronounced roll — heightens sense of speed
-    const roll = Math.sin(t * w * PHI * PHI) * 0.7;
+    // Inside factor: 1 when dist≈0, 0 when dist≥8
+    const inside = Math.max(0, 1 - dist / 8);
+
+    // Roll: subtle outside, wild spinning when inside
+    const roll = Math.sin(t * 0.85 * PHI * PHI) * (0.3 + inside * 2.2);
     camera.up.set(Math.sin(roll), Math.cos(roll), 0);
 
-    camera.lookAt(0, 0, 0);
+    // LookAt wanders when inside — adds to disorientation
+    lookTarget.set(
+      inside * Math.sin(t * 2.1) * 5,
+      inside * Math.sin(t * 1.6 / PHI) * 3.5,
+      0,
+    );
+    camera.lookAt(lookTarget);
   });
 
   return null;
@@ -129,57 +168,35 @@ function ConPlanes() {
   const meshRefs = useRef<(THREE.Mesh | null)[]>([]);
   const slabs    = useMemo(() => buildSlabs(), []);
 
-  // Minimal env map — simulates Infini-D "reflectivity": grey planes picking
-  // up the cyan of nearby teal planes (inter-object reflection)
-  const envMap = useMemo(() => {
-    const size = 4;
-    const data = new Uint8Array(size * size * 4 * 6);
-    // Each face: very dark with a faint teal tint
-    for (let i = 0; i < data.length; i += 4) {
-      data[i]     = 8;   // R
-      data[i + 1] = 22;  // G — teal bias
-      data[i + 2] = 28;  // B
-      data[i + 3] = 255;
-    }
-    const tex = new THREE.DataArrayTexture(data, size, size, 6);
-    tex.format  = THREE.RGBAFormat;
-    tex.mapping = THREE.CubeReflectionMapping;
-    tex.needsUpdate = true;
-    return tex;
-  }, []);
-
   const materials = useMemo(() => [
-    // 0: Grey — primary. glow≈0.02, reflectivity≈0.15
+    // 0: Grey — primary
     new THREE.MeshPhongMaterial({
-      color:            new THREE.Color("#bec2c6"),
-      emissive:         new THREE.Color("#03060a"), // Infini-D "glow" param
-      shininess:        180,
-      specular:         new THREE.Color("#8ab0cc"),
-      envMap,
-      reflectivity:     0.15,                       // picks up teal from nearby slabs
-      combine:          THREE.MixOperation,
-      flatShading:      false,
+      color:       new THREE.Color("#bec2c6"),
+      emissive:    new THREE.Color("#03060a"),
+      shininess:   180,
+      specular:    new THREE.Color("#8ab0cc"),
+      flatShading: false,
+      side:        THREE.DoubleSide,
     }),
-    // 1: Teal — glow≈0.04, reflectivity≈0.20
+    // 1: Teal
     new THREE.MeshPhongMaterial({
-      color:            new THREE.Color("#3d7878"),
-      emissive:         new THREE.Color("#010e0e"),
-      shininess:        160,
-      specular:         new THREE.Color("#70c8c8"),
-      envMap,
-      reflectivity:     0.20,
-      combine:          THREE.MixOperation,
-      flatShading:      false,
+      color:       new THREE.Color("#3d7878"),
+      emissive:    new THREE.Color("#010e0e"),
+      shininess:   160,
+      specular:    new THREE.Color("#70c8c8"),
+      flatShading: false,
+      side:        THREE.DoubleSide,
     }),
-    // 2: Dark navy — flat shading for faceted low-poly Infini-D look
+    // 2: Dark navy — faceted
     new THREE.MeshPhongMaterial({
-      color:            new THREE.Color("#1e3250"),
-      emissive:         new THREE.Color("#000508"),
-      shininess:        120,
-      specular:         new THREE.Color("#4070b0"),
-      flatShading:      true,
+      color:       new THREE.Color("#1e3250"),
+      emissive:    new THREE.Color("#000508"),
+      shininess:   120,
+      specular:    new THREE.Color("#4070b0"),
+      flatShading: true,
+      side:        THREE.DoubleSide,
     }),
-  ], [envMap]);
+  ], []);
 
   useFrame(({ clock }) => {
     const t = clock.elapsedTime;
@@ -208,18 +225,14 @@ function ConPlanes() {
   return (
     <group ref={groupRef}>
       {slabs.map((s, i) => {
-        const args: [number, number, number, number, number, number] =
-          s.axis === 0 ? [s.thick, s.w, s.h, 1, 5, 5]
-          : s.axis === 1 ? [s.w, s.thick, s.h, 5, 1, 5]
-          : [s.w, s.h, s.thick, 5, 5, 1];
-
+        const geo = makeParallelogram(s.w, s.h, s.skew, s.axis);
         return (
           <mesh
             key={i}
             ref={(m) => { meshRefs.current[i] = m; }}
             rotation={s.tilt}
+            geometry={geo}
           >
-            <boxGeometry args={args} />
             <primitive object={materials[s.matIdx]} attach="material" />
           </mesh>
         );
@@ -238,8 +251,9 @@ function ConFieldScene() {
 
       <ambientLight intensity={0.02} color="#ffffff" />
 
-      {/* Key light — main directional, like Infini-D studio default */}
-      <directionalLight position={[4, 7, 3]} intensity={5.5} color="#ffffff" />
+      {/* Key light — main directional */}
+      <directionalLight position={[4, 7, 3]} intensity={7.5} color="#ffffff" />
+      <directionalLight position={[-4, -7, -3]} intensity={3.5} color="#ffffff" />
 
       {/* Blue-cyan fill — pronounced, matches reference */}
       <directionalLight position={[-4, 1, -5]} intensity={0.55} color="#4499cc" />
