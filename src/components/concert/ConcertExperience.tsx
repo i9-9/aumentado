@@ -3,7 +3,8 @@
 import { Line, OrbitControls, useVideoTexture } from "@react-three/drei";
 import { Bloom, EffectComposer } from "@react-three/postprocessing";
 import { useFrame } from "@react-three/fiber";
-import { Suspense, useMemo, useRef } from "react";
+import { Suspense, useEffect, useMemo, useRef, useSyncExternalStore } from "react";
+import { audioStore } from "@/store/audioStore";
 import * as THREE from "three";
 import { Crowd, type PersonData } from "./Crowd";
 import { type ConcertQualitySettings, useConcertQuality } from "./useConcertQuality";
@@ -103,9 +104,7 @@ function TrussColumn({ x, yMin, yMax, z }: { x: number; yMin: number; yMax: numb
 }
 
 /* ── PA Tower: standalone lighting + sound tower ─────────────────────── */
-function PATower({ x, z, side }: { x: number; z: number; side: 1 | -1 }) {
-  const towerH = 14.5;
-  const boomY = 12.2;
+function PATower({ x, z, side, towerH = 14.5, boomY = 12.2 }: { x: number; z: number; side: 1 | -1; towerH?: number; boomY?: number }) {
   const boomInnerX = x - side * 4.8;
 
   return (
@@ -186,6 +185,8 @@ const SCREEN_H = 15.75; // 16:9 exacto (28 × 9/16)
  * El video se streamea en chunks desde /public — no necesita descargarse completo.
  */
 function VideoScreen() {
+  const isMuted = useSyncExternalStore(audioStore.subscribe, audioStore.getMuted, () => true);
+
   const tex = useVideoTexture("/cdh_opt.mp4", {
     loop: true,
     muted: true,
@@ -196,6 +197,13 @@ function VideoScreen() {
   tex.colorSpace = THREE.SRGBColorSpace;
   tex.minFilter = THREE.LinearFilter;
   tex.magFilter = THREE.LinearFilter;
+
+  useEffect(() => {
+    const video = tex.image as HTMLVideoElement;
+    if (!video) return;
+    video.muted = isMuted;
+    if (!isMuted) video.play().catch(() => {});
+  }, [isMuted, tex.image]);
 
   return (
     /* rotation Y=π: gira el plano para que su cara visible mire hacia −Z (el público) */
@@ -256,15 +264,15 @@ function ShowLights({ spotsRef, spotsMidRef, bulbsRef }: { spotsRef: React.RefOb
     const t = state.clock.elapsedTime;
     spotsRef.current.forEach((sl, i) => {
       if (!sl) return;
-      const sx = SPOT_X[i]; const phase = i*(Math.PI/3); const sweep = Math.sin(t*0.8+phase)*0.25;
-      sl.position.set(sx,11,-4); sl.lookAt(_target.set(sx+sweep*6,0,2));
-      sl.intensity = 45+Math.abs(Math.sin(t*BEAT*0.5+phase))*35;
+      const sx = SPOT_X[i]; const phase = i*(Math.PI/3); const sweep = Math.sin(t*0.8+phase)*0.3;
+      sl.position.set(sx,19,-4); sl.lookAt(_target.set(sx+sweep*8,0,2));
+      sl.intensity = 60+Math.abs(Math.sin(t*BEAT*0.5+phase))*40;
     });
     spotsMidRef.current.forEach((sl, i) => {
       if (!sl) return;
-      const sx = [-7,0,7][i]; const ph = i*1.2; const sweep = Math.sin(t*0.6+ph)*0.4;
-      sl.position.set(sx,11,-4); sl.lookAt(_target.set(sx+sweep*5,0,2));
-      sl.intensity = 28+Math.abs(Math.sin(t*BEAT+ph))*22;
+      const sideX = i > 0 ? 13 : -13; const ph = i*1.2; const sweep = Math.sin(t*0.6+ph)*0.5;
+      sl.position.set(sideX,19,1); sl.lookAt(_target.set(sweep*6,0,3));
+      sl.intensity = 35+Math.abs(Math.sin(t*BEAT+ph))*25;
     });
     bulbsRef.current.forEach((b,i) => {
       if (!b) return;
@@ -340,37 +348,60 @@ export function ConcertExperience() {
         {/* ── Gran pantalla LED principal ── */}
         <MainScreen />
 
-        {/* ── Front truss beam ── */}
-        <TrussBeam y={11} z={-4} xMin={-9.5} xMax={9.5} />
+        {/* ── Truss alto frontal — por encima de la pantalla (top pantalla = y17) ── */}
+        <TrussBeam y={19} z={-4} xMin={-11} xMax={11} />
 
-        {/* ── Torres PA: 2 frontales + 2 laterales flanqueando la pantalla ── */}
-        <PATower x={-9.5} z={-4} side={-1} />
-        <PATower x={ 9.5} z={-4} side={ 1} />
-        <PATower x={-14}  z={ 3} side={-1} />
-        <PATower x={ 14}  z={ 3} side={ 1} />
+        {/* Columnas laterales soporte del truss alto */}
+        <TrussColumn x={-11} yMin={0} yMax={19} z={-4} />
+        <TrussColumn x={ 11} yMin={0} yMax={19} z={-4} />
 
-        {/* ── Spot fixtures en el truss frontal ── */}
+        {/* ── Truss laterales a los costados de la pantalla ── */}
+        <TrussColumn x={-13} yMin={0} yMax={19} z={-4} />
+        <TrussColumn x={-13} yMin={0} yMax={19} z={ 6} />
+        <TrussBeam   y={19} z={-4} xMin={-15} xMax={-11} />
+        <TrussBeam   y={19} z={ 6} xMin={-15} xMax={-11} />
+        {/* eje Z izquierdo */}
+        {[-4, -1, 2, 5].map((sz, i) => (
+          <TrussBeam key={`lz-${i}`} y={19} z={sz} xMin={-14.5} xMax={-11.5} />
+        ))}
+
+        <TrussColumn x={ 13} yMin={0} yMax={19} z={-4} />
+        <TrussColumn x={ 13} yMin={0} yMax={19} z={ 6} />
+        <TrussBeam   y={19} z={-4} xMin={11} xMax={15} />
+        <TrussBeam   y={19} z={ 6} xMin={11} xMax={15} />
+        {/* eje Z derecho */}
+        {[-4, -1, 2, 5].map((sz, i) => (
+          <TrussBeam key={`rz-${i}`} y={19} z={sz} xMin={11.5} xMax={14.5} />
+        ))}
+
+        {/* ── Torres PA: frontales + laterales ── */}
+        <PATower x={-11} z={-4} side={-1} towerH={20} boomY={18} />
+        <PATower x={ 11} z={-4} side={ 1} towerH={20} boomY={18} />
+        <PATower x={-13} z={ 1} side={-1} towerH={20} boomY={18} />
+        <PATower x={ 13} z={ 1} side={ 1} towerH={20} boomY={18} />
+
+        {/* ── Spot fixtures en el truss alto frontal ── */}
         {SPOT_X.map((sx, i) => {
           const col = spotColors[i];
           return (
             <group key={`spot-${i}`}>
-              <mesh position={[sx,11.42,-4]}><boxGeometry args={[0.26,0.1,0.26]} /><meshStandardMaterial color="#1a1a22" metalness={0.7} roughness={0.4} /></mesh>
-              <mesh position={[sx-0.19,11.18,-4]}><boxGeometry args={[0.04,0.34,0.04]} /><meshStandardMaterial color="#111118" metalness={0.75} roughness={0.4} /></mesh>
-              <mesh position={[sx+0.19,11.18,-4]}><boxGeometry args={[0.04,0.34,0.04]} /><meshStandardMaterial color="#111118" metalness={0.75} roughness={0.4} /></mesh>
-              <mesh position={[sx,11.02,-4]} rotation={[Math.PI,0,0]}><cylinderGeometry args={[0.16,0.08,0.38,12]} /><meshStandardMaterial color="#111118" metalness={0.65} roughness={0.4} /></mesh>
-              <mesh ref={(m) => { if (m) bulbsRef.current[i] = m; }} position={[sx,10.82,-4]}>
+              <mesh position={[sx,19.42,-4]}><boxGeometry args={[0.26,0.1,0.26]} /><meshStandardMaterial color="#1a1a22" metalness={0.7} roughness={0.4} /></mesh>
+              <mesh position={[sx-0.19,19.18,-4]}><boxGeometry args={[0.04,0.34,0.04]} /><meshStandardMaterial color="#111118" metalness={0.75} roughness={0.4} /></mesh>
+              <mesh position={[sx+0.19,19.18,-4]}><boxGeometry args={[0.04,0.34,0.04]} /><meshStandardMaterial color="#111118" metalness={0.75} roughness={0.4} /></mesh>
+              <mesh position={[sx,19.02,-4]} rotation={[Math.PI,0,0]}><cylinderGeometry args={[0.16,0.08,0.38,12]} /><meshStandardMaterial color="#111118" metalness={0.65} roughness={0.4} /></mesh>
+              <mesh ref={(m) => { if (m) bulbsRef.current[i] = m; }} position={[sx,18.82,-4]}>
                 <sphereGeometry args={[0.09,14,14]} />
                 <meshStandardMaterial color={col} emissive={col} emissiveIntensity={3.5} toneMapped={false} />
               </mesh>
-              <spotLight ref={(l) => { if (l) spotsRef.current[i] = l; }} position={[sx,11,-4]} angle={0.45} penumbra={0.55} distance={40} decay={1} intensity={60} color={col} />
+              <spotLight ref={(l) => { if (l) spotsRef.current[i] = l; }} position={[sx,19,-4]} angle={0.45} penumbra={0.55} distance={50} decay={1} intensity={80} color={col} />
             </group>
           );
         })}
 
-        {/* Mid-span spots — en el mismo truss frontal, sin bloquear pantalla */}
+        {/* Spots laterales desde los truss costados */}
         {[-7,0,7].map((sx,i)=>(
           <group key={`spot-mid-${i}`}>
-            <spotLight ref={(l)=>{ if(l) spotsMidRef.current[i]=l; }} position={[sx,11,-4]} angle={0.35} penumbra={0.55} distance={35} decay={1} intensity={40} color="#ffffff" />
+            <spotLight ref={(l)=>{ if(l) spotsMidRef.current[i]=l; }} position={[sx > 0 ? 13 : -13, 19, 1]} angle={0.35} penumbra={0.55} distance={45} decay={1} intensity={50} color="#ffffff" />
           </group>
         ))}
 
