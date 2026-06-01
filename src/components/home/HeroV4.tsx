@@ -76,13 +76,13 @@ function AnimatedCamera() {
     const t = clock.elapsedTime;
     const w = 0.62;
 
-    const px =  22 * Math.sin(t * w);
-    const py =  13 * Math.sin(t * w * PHI);
-    const pz =  22 * Math.cos(t * w / PHI);
+    const px =  28 * Math.sin(t * w);
+    const py =  16 * Math.sin(t * w * PHI);
+    const pz =  28 * Math.cos(t * w / PHI);
 
-    const sx =  8 * Math.sin(t * w * PHI * PHI + 1.1);
-    const sy =  5 * Math.cos(t * w * PHI * PHI / PHI + 2.3);
-    const sz =  8 * Math.cos(t * w * PHI + 0.7);
+    const sx =  10 * Math.sin(t * w * PHI * PHI + 1.1);
+    const sy =  6 * Math.cos(t * w * PHI * PHI / PHI + 2.3);
+    const sz =  10 * Math.cos(t * w * PHI + 0.7);
 
     camera.position.set(px + sx, py + sy, pz + sz);
 
