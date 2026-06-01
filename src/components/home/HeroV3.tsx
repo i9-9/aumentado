@@ -1,7 +1,7 @@
 "use client";
 
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 
 /*
@@ -17,7 +17,11 @@ import * as THREE from "three";
  */
 
 const PHI          = 1.6180339887;
-const GOLDEN_ANGLE = 2 * Math.PI * (1 - 1 / PHI); // ≈ 137.508°
+const GOLDEN_ANGLE = 2 * Math.PI * (1 - 1 / PHI);
+// W = 1/PHI — base frequency unit. Every time-domain freq = W × PHIⁿ = PHI^(n−1)
+// n: …  −3      −2      −1      0      1      2      3      4  …
+// Hz: … 0.146  0.236  0.382  0.618  1.000  1.618  2.618  4.236 …
+const W = 1 / PHI;
 
 function h(n: number): number {
   const x = Math.sin(n * 127.1 + 311.7) * 43758.5453;
@@ -80,8 +84,8 @@ function buildSlabs(perAxis = 90): Slab[] {
         v: r * Math.sin(angle),
         phase:  i * GOLDEN_ANGLE + (axis * 2 * Math.PI) / 3,
         phase2: h(idx * 17) * Math.PI * 2,
-        amplitude: 4.0 + (i % 5) * PHI * 0.6,
-        speed: 1.8 + h(idx * 13) * 0.9,
+        amplitude: PHI * PHI * PHI * 2 + (i % 5) * PHI,  // [PHI³×2, PHI³×2 + 4PHI] ≈ [8.5, 15.0]
+        speed: PHI * PHI + h(idx * 13) * PHI,   // [PHI², PHI²+PHI] = [2.618, 4.236]
         w, h: hh, thick, skew, tilt,
         matIdx: matIdx as 0 | 1 | 2,
       });
@@ -120,42 +124,85 @@ function makeParallelogram(w: number, hh: number, skew: number, axis: 0|1|2): TH
  * When inside (dist < 8): roll intensifies, lookAt wanders → spinning chaos.
  * When outside: roll settles, lookAt centers → moment of clarity.
  */
+/*
+ * Keyboard fly controls (additive over auto-path):
+ *   W / ↑        forward       Shift  ×3 boost
+ *   S / ↓        backward
+ *   A / ←        strafe left
+ *   D / →        strafe right
+ *   Q / PgUp     rise
+ *   E / PgDn     descend
+ *
+ * Releasing keys decays velocity then offset → camera drifts back to path.
+ */
 function AnimatedCamera() {
   const { camera } = useThree();
+
   const lookTarget = useMemo(() => new THREE.Vector3(), []);
+  const autoPos    = useMemo(() => new THREE.Vector3(), []);
+  const ofs        = useMemo(() => new THREE.Vector3(), []);
+  const vel        = useMemo(() => new THREE.Vector3(), []);
+  const fwd        = useMemo(() => new THREE.Vector3(), []);
+  const rgt        = useMemo(() => new THREE.Vector3(), []);
+  const keys       = useRef(new Set<string>());
+
+  useEffect(() => {
+    const dn = (e: KeyboardEvent) => keys.current.add(e.code);
+    const up = (e: KeyboardEvent) => keys.current.delete(e.code);
+    window.addEventListener("keydown", dn);
+    window.addEventListener("keyup",   up);
+    return () => {
+      window.removeEventListener("keydown", dn);
+      window.removeEventListener("keyup",   up);
+    };
+  }, []);
 
   useFrame(({ clock }) => {
     const t = clock.elapsedTime;
+    const k = keys.current;
 
-    // Slow angular drift — orbit changes across the full animation
-    const theta = t * 0.22 + Math.sin(t * 0.22 / PHI) * 0.9;
-    const phi   = 0.45 * Math.sin(t * 0.17 * PHI);
+    // Auto-path (golden frequencies)
+    const theta    = t * (W * W) + Math.sin(t * (W * W * W)) * PHI;
+    const phi      = W * Math.sin(t * (W * W));
+    const d1       = Math.sin(t / W);
+    const d2       = Math.sin(t / (W * W)) * W;
+    const distNorm = ((d1 + d2) + (1 + W)) / (2 * (1 + W));
+    const dist     = W + 56 * Math.pow(distNorm, W);
 
-    // Fast radial oscillation — enters and exits multiple times
-    // Two φ-related frequencies → irregular cycle lengths
-    const d1 = Math.sin(t * 0.85);
-    const d2 = Math.sin(t * 0.85 * PHI) * 0.45;
-    const distNorm = ((d1 + d2) + 1.45) / 2.9;          // 0 → 1
-    const dist     = 1.2 + 24 * Math.pow(distNorm, 1.3); // 1.2 → 25
-
-    camera.position.set(
+    autoPos.set(
       dist * Math.cos(theta) * Math.cos(phi),
       dist * Math.sin(phi),
       dist * Math.sin(theta) * Math.cos(phi),
     );
 
-    // Inside factor: 1 when dist≈0, 0 when dist≥8
-    const inside = Math.max(0, 1 - dist / 8);
+    // Camera-local axes from previous frame (one-frame lag is imperceptible)
+    fwd.subVectors(lookTarget, camera.position).normalize();
+    rgt.crossVectors(fwd, camera.up).normalize();
 
-    // Roll: subtle outside, wild spinning when inside
-    const roll = Math.sin(t * 0.85 * PHI * PHI) * (0.3 + inside * 2.2);
+    const boost = k.has("ShiftLeft") || k.has("ShiftRight");
+    const spd   = boost ? 0.9 : 0.3;
+
+    if (k.has("KeyW") || k.has("ArrowUp"))    vel.addScaledVector(fwd,       spd);
+    if (k.has("KeyS") || k.has("ArrowDown"))  vel.addScaledVector(fwd,      -spd);
+    if (k.has("KeyA") || k.has("ArrowLeft"))  vel.addScaledVector(rgt,      -spd);
+    if (k.has("KeyD") || k.has("ArrowRight")) vel.addScaledVector(rgt,       spd);
+    if (k.has("KeyQ") || k.has("PageUp"))     vel.addScaledVector(camera.up,  spd);
+    if (k.has("KeyE") || k.has("PageDown"))   vel.addScaledVector(camera.up, -spd);
+
+    vel.multiplyScalar(0.80); // friction — velocity bleeds off quickly
+    ofs.add(vel);
+    ofs.multiplyScalar(0.93); // offset slowly collapses back to auto-path
+
+    camera.position.copy(autoPos).add(ofs);
+
+    const inside = Math.max(0, 1 - dist / 7);
+    const roll   = Math.sin(t / (W * W)) * (W + inside / (W * W * W));
     camera.up.set(Math.sin(roll), Math.cos(roll), 0);
 
-    // LookAt wanders when inside — adds to disorientation
     lookTarget.set(
-      inside * Math.sin(t * 2.1) * 5,
-      inside * Math.sin(t * 1.6 / PHI) * 3.5,
-      0,
+      inside * Math.sin(t / W)       * (1 / (W * W * W)),
+      inside * Math.sin(t * W)       * (1 / (W * W)),
+      inside * Math.cos(t / (W * W)) * (1 / W),
     );
     camera.lookAt(lookTarget);
   });
@@ -203,7 +250,8 @@ function ConPlanes() {
 
     // Very slow group drift — adds secondary parallax to camera flight
     if (groupRef.current) {
-      groupRef.current.rotation.y = t * 0.012;
+      groupRef.current.rotation.y = t * (W * W * W * W * W * W);             // W⁶ = PHI⁻⁶ ≈ 0.056
+      groupRef.current.rotation.x = Math.sin(t * (W * W * W * W * W * W * W)) * (1 / PHI); // W⁷ ≈ 0.034
     }
 
     meshRefs.current.forEach((mesh, i) => {
@@ -213,7 +261,7 @@ function ConPlanes() {
       const spd   = s.speed * Math.pow(PHI, s.axis);
       const raw1  = Math.sin(t * spd + s.phase);
       const eased = Math.sign(raw1) * Math.pow(Math.abs(raw1), 1 / PHI);
-      const raw2  = Math.sin(t * spd * PHI + s.phase2) * 0.30;
+      const raw2  = Math.sin(t * spd * PHI + s.phase2) * (W * W); // W² = PHI⁻² ≈ 0.382
       const offset = s.amplitude * (eased + raw2);
 
       if (s.axis === 0)      mesh.position.set(offset, s.u, s.v);
@@ -271,11 +319,12 @@ export function HeroV3() {
   return (
     <section className="relative h-[100dvh] overflow-hidden bg-black">
       <Canvas
-        camera={{ fov: 55, position: [10, 3, 10], near: 0.1, far: 350 }}
+        camera={{ fov: 72, position: [10, 3, 10], near: 0.1, far: 350 }}
         gl={{
-          antialias:        false,
-          toneMapping:      THREE.NoToneMapping,
-          outputColorSpace: THREE.LinearSRGBColorSpace,
+          antialias:            false,
+          toneMapping:          THREE.NoToneMapping,
+          outputColorSpace:     THREE.LinearSRGBColorSpace,
+          preserveDrawingBuffer: true,
         }}
         dpr={1}
       >
@@ -285,6 +334,10 @@ export function HeroV3() {
       <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-end justify-between px-6 pb-8 sm:px-10 lg:px-12">
         <p className="font-mono text-[10px] tracking-[0.2em] text-white/15">
           03
+        </p>
+        <p className="font-mono text-[9px] leading-relaxed tracking-[0.15em] text-white/10 text-right">
+          W S A D · Q E · ↑↓←→<br />
+          SHIFT boost
         </p>
       </div>
     </section>
