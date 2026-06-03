@@ -1,11 +1,26 @@
 "use client";
 
-import { getBeat, getBeatPhase } from "@/store/musicStore";
+import {
+  getBeat,
+  getBeatPhase,
+  isCaptureMode,
+  musicStore,
+} from "@/store/musicStore";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import * as THREE from "three";
 import { V5Audio } from "./V5Audio";
+import { V5FrameStepBridge } from "./V5FrameStepBridge";
 import { V5KeyboardShortcuts } from "./V5KeyboardShortcuts";
+
+export type HeroV5Props = {
+  /** Modo grabación: tamaño fijo, sin UI, solo cámara automática */
+  capture?: boolean;
+  /** Reloj por frame (cuadro a cuadro desde Playwright) */
+  frameCapture?: boolean;
+  width?: number;
+  height?: number;
+};
 
 const PHI = 1.6180339887;
 const GOLDEN_ANGLE = 2 * Math.PI * (1 - 1 / PHI);
@@ -109,6 +124,11 @@ const WHEEL_ZOOM = 0.04;
 
 function AnimatedCamera() {
   const { camera, gl } = useThree();
+  const capture = useSyncExternalStore(
+    musicStore.subscribe,
+    isCaptureMode,
+    () => false,
+  );
 
   const lookTarget = useMemo(() => new THREE.Vector3(), []);
   const autoPos = useMemo(() => new THREE.Vector3(), []);
@@ -126,6 +146,7 @@ function AnimatedCamera() {
   const wheelImpulse = useRef(0);
 
   useEffect(() => {
+    if (capture) return;
     const dn = (e: KeyboardEvent) => keys.current.add(e.code);
     const up = (e: KeyboardEvent) => keys.current.delete(e.code);
     window.addEventListener("keydown", dn);
@@ -134,9 +155,10 @@ function AnimatedCamera() {
       window.removeEventListener("keydown", dn);
       window.removeEventListener("keyup", up);
     };
-  }, []);
+  }, [capture]);
 
   useEffect(() => {
+    if (capture) return;
     const el = gl.domElement;
 
     const onPointerDown = (e: PointerEvent) => {
@@ -204,7 +226,7 @@ function AnimatedCamera() {
       el.removeEventListener("wheel", onWheel);
       el.removeEventListener("contextmenu", onContextMenu);
     };
-  }, [gl, camera, fwd, rgt, lookTarget, vel]);
+  }, [capture, gl, camera, fwd, rgt, lookTarget, vel]);
 
   useFrame(() => {
     const beatPhase = getBeatPhase();
@@ -224,27 +246,30 @@ function AnimatedCamera() {
     fwd.subVectors(lookTarget, camera.position).normalize();
     rgt.crossVectors(fwd, camera.up).normalize();
 
-    const k = keys.current;
-    const boost = k.has("ShiftLeft") || k.has("ShiftRight");
-    const spd = boost ? 0.9 : 0.3;
+    if (!capture) {
+      const k = keys.current;
+      const boost = k.has("ShiftLeft") || k.has("ShiftRight");
+      const spd = boost ? 0.9 : 0.3;
 
-    if (k.has("KeyW") || k.has("ArrowUp")) vel.addScaledVector(fwd, spd);
-    if (k.has("KeyS") || k.has("ArrowDown")) vel.addScaledVector(fwd, -spd);
-    if (k.has("KeyA") || k.has("ArrowLeft")) vel.addScaledVector(rgt, -spd);
-    if (k.has("KeyD") || k.has("ArrowRight")) vel.addScaledVector(rgt, spd);
-    if (k.has("KeyQ") || k.has("PageUp")) vel.addScaledVector(camera.up, spd);
-    if (k.has("KeyE") || k.has("PageDown")) vel.addScaledVector(camera.up, -spd);
+      if (k.has("KeyW") || k.has("ArrowUp")) vel.addScaledVector(fwd, spd);
+      if (k.has("KeyS") || k.has("ArrowDown")) vel.addScaledVector(fwd, -spd);
+      if (k.has("KeyA") || k.has("ArrowLeft")) vel.addScaledVector(rgt, -spd);
+      if (k.has("KeyD") || k.has("ArrowRight")) vel.addScaledVector(rgt, spd);
+      if (k.has("KeyQ") || k.has("PageUp")) vel.addScaledVector(camera.up, spd);
+      if (k.has("KeyE") || k.has("PageDown"))
+        vel.addScaledVector(camera.up, -spd);
 
-    if (wheelImpulse.current !== 0) {
-      vel.addScaledVector(fwd, -wheelImpulse.current);
-      wheelImpulse.current = 0;
+      if (wheelImpulse.current !== 0) {
+        vel.addScaledVector(fwd, -wheelImpulse.current);
+        wheelImpulse.current = 0;
+      }
+
+      vel.multiplyScalar(0.8);
+      ofs.add(vel);
+      ofs.multiplyScalar(0.93);
     }
 
-    vel.multiplyScalar(0.8);
-    ofs.add(vel);
-    ofs.multiplyScalar(0.93);
-
-    camera.position.copy(autoPos).add(ofs);
+    camera.position.copy(autoPos).add(capture ? _origin : ofs);
 
     const roll = Math.sin(w * PHI * PHI) * 0.7;
     camera.up.set(Math.sin(roll), Math.cos(roll), 0);
@@ -347,7 +372,13 @@ function ConPlanes() {
   );
 }
 
-function Scene() {
+function Scene({
+  capture,
+  frameCapture,
+}: {
+  capture?: boolean;
+  frameCapture?: boolean;
+}) {
   return (
     <>
       <color attach="background" args={["#0d0d0d"]} />
@@ -366,37 +397,65 @@ function Scene() {
 
       <AnimatedCamera />
       <ConPlanes />
+      {capture && frameCapture ? <V5FrameStepBridge /> : null}
     </>
   );
 }
 
-export function HeroV5() {
+export function HeroV5({
+  capture = false,
+  frameCapture = false,
+  width,
+  height,
+}: HeroV5Props) {
+  const sizeStyle =
+    capture && width && height
+      ? { width, height }
+      : undefined;
+
   return (
-    <section className="relative h-[100dvh] overflow-hidden bg-black">
-      <V5Audio />
-      <V5KeyboardShortcuts />
+    <section
+      className={
+        capture
+          ? "relative overflow-hidden bg-black"
+          : "relative h-[100dvh] overflow-hidden bg-black"
+      }
+      style={sizeStyle}
+      data-v5-capture={capture ? "true" : undefined}
+    >
+      {!capture ? (
+        <>
+          <V5Audio />
+          <V5KeyboardShortcuts />
+        </>
+      ) : null}
       <Canvas
         camera={{ fov: 55, position: [10, 3, 10], near: 0.1, far: 350 }}
         gl={{
-          antialias: false,
+          antialias: capture,
           toneMapping: THREE.NoToneMapping,
           outputColorSpace: THREE.LinearSRGBColorSpace,
+          preserveDrawingBuffer: capture,
         }}
         dpr={1}
+        style={{ width: "100%", height: "100%" }}
+        frameloop={capture && frameCapture ? "demand" : "always"}
       >
-        <Scene />
+        <Scene capture={capture} frameCapture={frameCapture} />
       </Canvas>
 
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-end justify-between px-6 pb-8 sm:px-10 lg:px-12">
-        <p className="font-mono text-[10px] tracking-[0.2em] text-white/15">
-          05 · simulacro
-        </p>
-        <p className="text-right font-mono text-[9px] leading-relaxed tracking-[0.15em] text-white/10">
-          W S A D · Q E · ↑↓←→ · SHIFT boost
-          <br />
-          drag pan · rueda zoom · 1–9 BPM
-        </p>
-      </div>
+      {!capture ? (
+        <div data-v5-labels className="pointer-events-none absolute inset-x-0 bottom-0 flex items-end justify-between px-6 pb-8 sm:px-10 lg:px-12">
+          <p className="font-mono text-[10px] tracking-[0.2em] text-white/15">
+            05 · terminal
+          </p>
+          <p className="text-right font-mono text-[9px] leading-relaxed tracking-[0.15em] text-white/10">
+            W S A D · Q E · ↑↓←→ · SHIFT boost
+            <br />
+            drag pan · rueda zoom · 1–9 BPM · R restart · H ui · F fullscreen
+          </p>
+        </div>
+      ) : null}
     </section>
   );
 }

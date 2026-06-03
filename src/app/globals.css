@@ -12,6 +12,11 @@
 
 html {
   -webkit-text-size-adjust: 100%;
+  scrollbar-width: none;
+}
+
+html::-webkit-scrollbar {
+  display: none;
 }
 
 body {
@@ -21,6 +26,17 @@ body {
   font-size: 1rem;
   font-weight: 400;
   line-height: 1.5;
+}
+
+/* v5 modo limpio para grabar pantalla — tecla H */
+.v5-ui-hidden header,
+.v5-ui-hidden [data-v5-labels] {
+  display: none !important;
+}
+
+.v5-ui-hidden,
+.v5-ui-hidden * {
+  cursor: none !important;
 }
 
 @layer utilities {

@@ -18,6 +18,10 @@
 # production
 /build
 
+# v5 capture output
+/captures/
+captures/**/_frames/
+
 # misc
 .DS_Store
 *.pem

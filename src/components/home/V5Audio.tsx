@@ -4,7 +4,7 @@ import { audioStore } from "@/store/audioStore";
 import { musicStore } from "@/store/musicStore";
 import { useEffect, useSyncExternalStore } from "react";
 
-/** Monta el track Simulacro y lo enlaza al mute global */
+/** Monta Terminal y lo enlaza al mute global */
 export function V5Audio() {
   const isMuted = useSyncExternalStore(
     audioStore.subscribe,

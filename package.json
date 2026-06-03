@@ -6,7 +6,13 @@
     "dev": "next dev --turbopack",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "capture:v5": "node scripts/capture-v5.mjs",
+    "capture:v5:dev": "node scripts/capture-v5.mjs --no-server",
+    "capture:v5:local": "BASE_URL=http://localhost:3001 node scripts/capture-v5.mjs --no-server",
+    "capture:v5:prores": "CAPTURE_CODEC=prores node scripts/capture-v5.mjs",
+    "capture:v5:prores:local": "CAPTURE_CODEC=prores BASE_URL=http://localhost:3001 node scripts/capture-v5.mjs --no-server",
+    "capture:v5:prores:preset": "CAPTURE_CODEC=prores BASE_URL=http://localhost:3001 node scripts/capture-v5.mjs --no-server --formats=landscape"
   },
   "dependencies": {
     "@react-three/drei": "^10.7.7",
@@ -26,6 +32,7 @@
     "eslint": "^9.27.0",
     "eslint-config-next": "^15.3.3",
     "tailwindcss": "^4.1.8",
-    "typescript": "^5.8.3"
+    "typescript": "^5.8.3",
+    "playwright": "^1.52.0"
   }
 }
