@@ -6,7 +6,7 @@ import { useSyncExternalStore } from "react";
 import { audioStore } from "@/store/audioStore";
 import { BPM_DIVISOR_PRESETS, musicStore } from "@/store/musicStore";
 
-const VERSIONS = ["01", "02", "03", "04", "05", "07"] as const;
+const VERSIONS = ["01", "02", "03", "04", "05", "06", "07"] as const;
 
 function versionHref(label: (typeof VERSIONS)[number]) {
   if (label === "01") return "/";
@@ -14,6 +14,7 @@ function versionHref(label: (typeof VERSIONS)[number]) {
   if (label === "03") return "/v3";
   if (label === "04") return "/v4";
   if (label === "05") return "/v5";
+  if (label === "06") return "/v6";
   return "/v7";
 }
 
@@ -30,6 +31,7 @@ function activeVersionPath(pathname: string) {
   if (pathname === "/v3") return "/v3";
   if (pathname === "/v4") return "/v4";
   if (pathname === "/v5") return "/v5";
+  if (pathname === "/v6") return "/v6";
   if (pathname === "/v7") return "/v7";
   return "/";
 }
